@@ -1,0 +1,18 @@
+{
+  "name": "sniff-sniff",
+  "private": true,
+  "version": "0.1.0",
+  "description": "First-person horror about walking your dog in Willet, Wisconsin. Summer 1995.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5174",
+    "build": "vite build",
+    "preview": "vite preview --port 4174"
+  },
+  "dependencies": {
+    "three": "^0.169.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10"
+  }
+}

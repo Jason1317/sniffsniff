@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sniff Sniff</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+  <div id="game"></div>
+
+  <div id="ui">
+    <div id="dot"></div>
+    <div id="vhs" class="hidden"><div class="vhs-play">PLAY ▶</div><div id="vhs-time"></div></div>
+    <div id="objective" class="hidden"><span class="label">TO DO</span><div id="tasks"></div><div id="hint"></div></div>
+    <div id="pointer" class="hidden"><div id="pointer-arrow"></div><div id="pointer-label"></div></div>
+    <div id="prompt" class="hidden"></div>
+    <div id="subtitle" class="hidden"><span id="sub-name"></span><span id="sub-text"></span></div>
+    <div id="choices" class="hidden"></div>
+    <div id="note" class="hidden">
+      <div id="note-body"></div>
+      <div class="note-hint">[E] done</div>
+    </div>
+    <div id="card"><div id="card-text"></div></div>
+
+    <div id="pause" class="hidden">
+      <div class="panel">
+        <h2>PAUSE ‖</h2>
+        <label>Mouse sensitivity <input id="opt-sens" type="range" min="0.2" max="2.5" step="0.05" value="1" /></label>
+        <label>Sound volume <input id="opt-vol" type="range" min="0" max="1" step="0.05" value="0.9" /></label>
+        <label>Voice volume <input id="opt-voice" type="range" min="0" max="1" step="0.05" value="1" /></label>
+        <label>Picture
+          <select id="opt-res">
+            <option value="300">Crunchy (300p)</option>
+            <option value="400" selected>VHS (400p)</option>
+            <option value="540">Sharp (540p)</option>
+            <option value="720">Clean (720p)</option>
+          </select>
+        </label>
+        <button id="btn-resume">▶ RESUME</button>
+        <button id="btn-restart" class="dim">⟲ RESTART TAPE</button>
+      </div>
+    </div>
+
+    <div id="title">
+      <div class="title-inner">
+        <h1>SNIFF<br />SNIFF</h1>
+        <div class="tag">Willet, Wisconsin &middot; Summer 1995</div>
+        <button id="btn-play">▶ PLAY TAPE</button>
+        <button id="btn-night" class="dim">▶ SKIP TO NIGHT (playtest)</button>
+        <div id="loading" class="hidden">rewinding&hellip;</div>
+        <div class="controls">
+          <div><b>WASD</b> walk &nbsp; <b>SHIFT</b> walk faster &nbsp; <b>MOUSE</b> look</div>
+          <div><b>E</b> interact / pet Moose &nbsp; <b>C</b> smoke &nbsp; <b>Q</b> whistle for Moose &nbsp; <b>ESC</b> pause</div>
+        </div>
+        <div class="fine">Headphones recommended. Voices use your browser's built-in speech.</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

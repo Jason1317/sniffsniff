@@ -1,0 +1,20 @@
+# dependencies + build output
+node_modules/
+dist/
+
+# generated marketing images (large binaries; regenerate or host elsewhere)
+press/
+
+# logs + local env
+*.log
+npm-debug.log*
+.env
+.env.*
+
+# editor / OS clutter
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

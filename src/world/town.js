@@ -135,6 +135,49 @@ export class World {
     return found;
   }
 
+  // Waypoints from `from` to `to` that walk around parked vehicles (box colliders flagged
+  // `vehicle`) instead of through them. A box that either end is already inside is ignored.
+  route(from, to, pad = 0.55) {
+    const boxes = this.colliders.filter((c) => c.vehicle && !c.disabled && !inBox(from, c, pad) && !inBox(to, c, pad));
+    const pts = [];
+    let a = from.clone();
+    for (let guard = 0; guard < 4; guard++) {
+      const c = boxes.find((b) => segHitsBox(a, to, b, pad));
+      if (!c) break;
+      const e = pad + 0.2;
+      const k = [[c.minX - e, c.minZ - e], [c.maxX + e, c.minZ - e], [c.maxX + e, c.maxZ + e], [c.minX - e, c.maxZ + e]].map(([x, z]) => new THREE.Vector3(x, 0, z));
+      let best = null, bl = Infinity;
+      for (let i = 0; i < 4; i++) {
+        if (!segHitsBox(a, k[i], c, pad) && !segHitsBox(k[i], to, c, pad)) {
+          const l = a.distanceTo(k[i]) + k[i].distanceTo(to);
+          if (l < bl) { bl = l; best = [k[i]]; }
+        }
+        for (const j of [(i + 1) % 4, (i + 3) % 4]) {
+          if (segHitsBox(a, k[i], c, pad) || segHitsBox(k[j], to, c, pad)) continue;
+          const l = a.distanceTo(k[i]) + k[i].distanceTo(k[j]) + k[j].distanceTo(to);
+          if (l < bl) { bl = l; best = [k[i], k[j]]; }
+        }
+      }
+      if (!best) break;
+      pts.push(...best);
+      a = best[best.length - 1];
+    }
+    pts.push(to.clone());
+    return pts;
+  }
+
+  // Keep a walker (neighbor) from passing through vehicles.
+  collideVehicles(pos, r) {
+    for (const c of this.colliders) {
+      if (!c.vehicle || c.disabled) continue;
+      if (pos.x < c.minX - r || pos.x > c.maxX + r || pos.z < c.minZ - r || pos.z > c.maxZ + r) continue;
+      const cx = clamp(pos.x, c.minX, c.maxX), cz = clamp(pos.z, c.minZ, c.maxZ);
+      const dx = pos.x - cx, dz = pos.z - cz, d = Math.hypot(dx, dz);
+      if (d >= r) continue;
+      if (d > 1e-6) { pos.x = cx + (dx / d) * r; pos.z = cz + (dz / d) * r; }
+    }
+  }
+
   // `self` is skipped when checking moving bodies (neighbors, Moose, Richie).
   collide(pos, r, bounds = true, self = null, npcsOnly = false) {
     for (let it = 0; it < 2; it++) {
@@ -483,7 +526,7 @@ export class World {
     truck.position.set(37.5, 0, -2.4);
     truck.rotation.y = Math.PI / 2;
     this.dynamic.add(truck);
-    this.truck = { group: truck, collider: this.addCollider({ minX: 34, maxX: 41.5, minZ: -3.7, maxZ: -1.1 }) };
+    this.truck = { group: truck, collider: this.addCollider({ minX: 34, maxX: 41.5, minZ: -3.7, maxZ: -1.1, vehicle: true }) };
     this.dayOnly.push(truck);
   }
 
@@ -628,4 +671,20 @@ function flagTex(kind) {
       x.fillStyle = '#ffb612'; x.fillRect(0, 8, w, 6);
     }
   }, { repeat: false });
+}
+
+function inBox(p, c, pad) { return p.x > c.minX - pad && p.x < c.maxX + pad && p.z > c.minZ - pad && p.z < c.maxZ + pad; }
+
+// Does the segment p→q cross the box grown by `pad`? (2D slab test)
+function segHitsBox(p, q, c, pad) {
+  let t0 = 0, t1 = 1;
+  for (const [o, d, lo, hi] of [[p.x, q.x - p.x, c.minX - pad, c.maxX + pad], [p.z, q.z - p.z, c.minZ - pad, c.maxZ + pad]]) {
+    if (Math.abs(d) < 1e-9) { if (o < lo || o > hi) return false; continue; }
+    let a = (lo - o) / d, b = (hi - o) / d;
+    if (a > b) [a, b] = [b, a];
+    t0 = Math.max(t0, a);
+    t1 = Math.min(t1, b);
+    if (t0 > t1) return false;
+  }
+  return true;
 }

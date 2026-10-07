@@ -129,6 +129,8 @@ export class Npc {
     this.yaw = def.yaw || 0;
     this.walking = false;
     this.speed = 0;
+    this.moveSpeed = 0;
+    this.arrive = true;
     this.phase = 0;
     this.lookTarget = null;       // world point or Object3D
     this.lookWeight = 1;
@@ -191,26 +193,37 @@ export class Npc {
     this.breath += dt;
     // walking along a path
     if (this.path && this.path.length) {
-      const tgt = this.path[0];
-      const dx = tgt.x - this.root.position.x, dz = tgt.z - this.root.position.z;
+      const pos = this.root.position, tgt = this.path[0];
+      const dx = tgt.x - pos.x, dz = tgt.z - pos.z;
       const d = Math.hypot(dx, dz);
-      const spd = this.walkSpeed || 1.3;
-      if (d < 0.08) {
+      const last = this.path.length === 1;
+      if (d < (last ? 0.06 : 0.35)) {
         this.path.shift();
         if (!this.path.length) { this.walking = false; if (this.pathDone) { const r = this.pathDone; this.pathDone = null; r(); } }
       } else {
-        const step = Math.min(d, spd * dt);
-        this.root.position.x += (dx / d) * step;
-        this.root.position.z += (dz / d) * step;
-        this.yaw = dampAngle(this.yaw, yawTo(dx, dz), 8, dt);
+        // ease in, slow into sharp turns, ease out at the end of the path
+        let rem = d;
+        for (let i = 1; i < this.path.length; i++) rem += Math.hypot(this.path[i].x - this.path[i - 1].x, this.path[i].z - this.path[i - 1].z);
+        const spd = this.walkSpeed || 1.3;
+        let want = this.arrive ? Math.min(spd, Math.sqrt(2 * 1.1 * rem) + 0.08) : spd;
+        const turn = Math.abs(nearAngle(0, yawTo(dx, dz) - this.yaw));
+        want *= clamp(1.25 - turn * 0.8, 0.12, 1);
+        const acc = want > this.moveSpeed ? 1.8 : 3.5;
+        this.moveSpeed += clamp(want - this.moveSpeed, -acc * dt, acc * dt);
+        const step = Math.min(d, this.moveSpeed * dt);
+        pos.x += (dx / d) * step;
+        pos.z += (dz / d) * step;
+        g.world.collideVehicles(pos, 0.32);
+        this.yaw = dampAngle(this.yaw, yawTo(dx, dz), 6, dt);
         this.walking = true;
       }
       this.root.position.y = damp(this.root.position.y, g.world.groundHeight(this.root.position.x, this.root.position.z), 12, dt);
     } else if (this.faceYaw !== undefined && this.faceYaw !== null) {
       this.yaw = dampAngle(this.yaw, this.faceYaw, 4, dt);
     }
+    if (!this.walking) this.moveSpeed = 0;
     this.root.rotation.y = this.yaw;
-    this.speed = damp(this.speed, this.walking ? (this.walkSpeed || 1.3) : 0, 8, dt);
+    this.speed = this.walking ? this.moveSpeed : damp(this.speed, 0, 8, dt);
 
     // walk cycle
     const run = this.running ? 1 : 0;
@@ -268,9 +281,21 @@ export class Npc {
   }
 
   // ---------- behavior helpers ----------
-  walkPath(points, speed = 1.3) {
+  // Walk through `points`, detouring around parked vehicles. opts.arrive: ease to a stop
+  // at the end (off for loops like the jogger's, where the path keeps going).
+  walkPath(points, speed = 1.3, opts = {}) {
+    if (this.pathDone) { const r = this.pathDone; this.pathDone = null; r(); }
     this.walkSpeed = speed;
-    this.path = points.map((p) => (p.isVector3 ? p.clone() : new THREE.Vector3(p[0], 0, p[1])));
+    this.arrive = opts.arrive !== false;
+    const W = this.g.world, path = [];
+    let from = this.root.position.clone();
+    for (const p of points) {
+      const to = p.isVector3 ? p.clone() : new THREE.Vector3(p[0], 0, p[1]);
+      to.y = 0;
+      path.push(...W.route(from, to));
+      from = to;
+    }
+    this.path = path;
     return new Promise((r) => (this.pathDone = r));
   }
 

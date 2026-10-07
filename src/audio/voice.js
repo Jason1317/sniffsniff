@@ -1,14 +1,20 @@
 // Voice acting through the browser's built-in speech synthesis.
 // Each character gets a preferred voice, pitch and rate; subtitles always show.
 
+// `want` lists the neural "Online (Natural)" voices first (Edge has them; they sound far
+// less robotic), then the classic system voices Chrome offers on Windows/macOS.
 export const CAST = {
-  richie: { name: 'Richie', color: '#efe3b8', want: ['Microsoft Mark', 'Microsoft Guy', 'Microsoft Eric', 'Microsoft David', 'Google US English', 'Alex', 'Daniel'], pitch: 1.2, rate: 1.05 },
-  dorothy: { name: 'Mrs. Kessler', color: '#f0bfe0', want: ['Microsoft Zira', 'Microsoft Aria', 'Microsoft Jenny', 'Google US English', 'Samantha', 'Victoria'], pitch: 1.3, rate: 0.9 },
-  walt: { name: 'Walt Brenner', color: '#c9dc9c', want: ['Microsoft David', 'Microsoft Guy', 'Microsoft Christopher', 'Google UK English Male', 'Fred', 'Daniel'], pitch: 0.55, rate: 0.86 },
-  lindqvist: { name: 'Mr. Lindqvist', color: '#b6dcef', want: ['Google UK English Male', 'Microsoft George', 'Microsoft Ryan', 'Microsoft David', 'Daniel'], pitch: 0.72, rate: 0.72 },
-  jogger: { name: 'Jogger', color: '#ffc680', want: ['Microsoft David', 'Microsoft Guy', 'Google US English'], pitch: 1.05, rate: 1.18 },
-  dj: { name: 'WLKR 98.1 FM', color: '#a9c8f5', want: ['Google US English', 'Microsoft Zira', 'Microsoft Aria', 'Samantha'], pitch: 1.1, rate: 1.12 },
+  richie: { name: 'Richie', color: '#efe3b8', want: ['Microsoft Andrew Online', 'Microsoft Brian Online', 'Microsoft Guy Online', 'Microsoft Eric Online', 'Microsoft Mark', 'Microsoft David', 'Google US English', 'Alex', 'Daniel'], pitch: 1.1, rate: 1.03 },
+  dorothy: { name: 'Mrs. Kessler', color: '#f0bfe0', want: ['Microsoft Ava Online', 'Microsoft Michelle Online', 'Microsoft Jenny Online', 'Microsoft Zira', 'Microsoft Aria', 'Google US English', 'Samantha', 'Victoria'], pitch: 1.15, rate: 0.92 },
+  walt: { name: 'Walt Brenner', color: '#c9dc9c', want: ['Microsoft Roger Online', 'Microsoft Christopher Online', 'Microsoft Steffan Online', 'Microsoft David', 'Microsoft Guy', 'Google UK English Male', 'Fred', 'Daniel'], pitch: 0.72, rate: 0.88 },
+  lindqvist: { name: 'Mr. Lindqvist', color: '#b6dcef', want: ['Microsoft Ryan Online', 'Google UK English Male', 'Microsoft George', 'Microsoft Ryan', 'Microsoft David', 'Daniel'], pitch: 0.72, rate: 0.72 },
+  jogger: { name: 'Jogger', color: '#ffc680', want: ['Microsoft Eric Online', 'Microsoft Guy Online', 'Microsoft David', 'Google US English'], pitch: 1.05, rate: 1.15 },
+  dj: { name: 'WLKR 98.1 FM', color: '#a9c8f5', want: ['Microsoft Emma Online', 'Microsoft Aria Online', 'Google US English', 'Microsoft Zira', 'Samantha'], pitch: 1.05, rate: 1.1 },
 };
+
+// Pitch-shifting a voice is what makes it sound most like a robot. Neural/cloud voices
+// get only half the shift; system voices keep it (they need it to sound distinct).
+const natural = (v) => !!v && /Natural|Online|Google/i.test(v.name);
 
 export class Voice {
   constructor(ui) {
@@ -66,7 +72,7 @@ export class Voice {
       const u = new SpeechSynthesisUtterance(text);
       const v = this.voiceFor(who);
       if (v) u.voice = v;
-      u.pitch = c.pitch;
+      u.pitch = natural(v) ? 1 + (c.pitch - 1) * 0.5 : c.pitch;
       u.rate = c.rate;
       u.volume = Math.min(1, vol);
       u.onend = finish;

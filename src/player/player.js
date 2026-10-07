@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { clamp, damp, nearAngle, yawTo } from '../core/util.js';
+import { clamp, damp, dampAngle, nearAngle, yawTo } from '../core/util.js';
 
 // Richie. A rig at his feet (yaw), a head (pitch + roll), a "look" group for free-look
 // during cutscenes, then the camera. Hands hang off the head so they stay put when the
@@ -30,6 +30,7 @@ export class Player {
     this.control = false;
     this.freeLook = true;      // during cutscenes, mouse adds a little head-turn
     this.cut = { yaw: 0, pitch: 0 };
+    this.extraYaw = 0; // scripted head turn on top of yaw (looking into a turn while driving)
     this.dip = 0; // extra glance down (lighting a cigarette) that doesn't fight the mouse
     this.bob = 0;
     this.bobAmt = 0;
@@ -143,7 +144,7 @@ export class Player {
     this.head.position.set(Math.cos(this.bob * 0.5) * 0.018 * this.bobAmt, this.eye + Math.abs(Math.sin(this.bob * 0.5)) * 0.035 * this.bobAmt - 0.02 * this.bobAmt, 0);
     if (this.attached) this.head.rotation.set(this.pitch, this.yaw - this.attachYaw, this.roll + sway);
     else this.head.rotation.set(this.pitch, 0, this.roll + sway);
-    this.look.rotation.set(this.cut.pitch + this.dip, this.cut.yaw, 0);
+    this.look.rotation.set(this.cut.pitch + this.dip, this.cut.yaw + this.extraYaw, 0);
   }
 
   footstep(spd) {
@@ -166,6 +167,19 @@ export class Player {
     const e = this.eyeWorld();
     const dx = p.x - e.x, dy = p.y - e.y, dz = p.z - e.z;
     return this.turnTo(yawTo(dx, dz), Math.atan2(dy, Math.hypot(dx, dz)), dur, ease);
+  }
+
+  // Keep the eyes on something without snapping to it: a damped follow until stop().
+  gaze(getTarget, rate = 4) {
+    const hooks = this.g.hooks;
+    const fn = (dt) => {
+      const p = getTarget(), e = this.eyeWorld();
+      const dx = p.x - e.x, dy = p.y - e.y, dz = p.z - e.z;
+      this.yaw = dampAngle(this.yaw, yawTo(dx, dz), rate, dt);
+      this.pitch = damp(this.pitch, Math.atan2(dy, Math.hypot(dx, dz)), rate, dt);
+    };
+    hooks.add(fn);
+    return { stop: () => hooks.delete(fn) };
   }
 
   // Walk somewhere (bob + footsteps happen automatically).

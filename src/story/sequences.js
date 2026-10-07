@@ -179,29 +179,78 @@ export class Seq {
 
     A.setMuffle(650, 0.01);
     const engine = A.loop('engine', { follow: car.root, vol: 0.5, verb: 0.03, ref: 2.5 });
-    const radio = A.loop('static', { follow: car.wheel, vol: 0.1, verb: 0 });
     tw.to(g.renderer, { fade: 0 }, 3.5);
 
-    let lastYaw = car.root.rotation.y, steer = 0;
-    const drive = tw.during(15, (k, dt) => {
-      const u = 1 - Math.pow(1 - k, 2.1);
-      placeCar(Math.min(0.9999, u));
+    // The radio: the tail of one song, then the DJ talking over the next one's intro.
+    const R = { follow: car.radio, verb: 0.02, ref: 1.0, vary: 0 };
+    let song = A.play('radio_a', { ...R, vol: 0.85, at: 60 });
+    const show = (async () => {
+      await tw.wait(5.5);
+      A.stop(song, 2.2);
+      await tw.wait(1.4);
+      song = A.play('radio_b', { ...R, vol: 0.3 });
+      await tw.wait(0.8);
+      for (const line of djLines) await g.voice.speak('dj', line, { vol: 0.8 });
+      A.setVol(song, 0.8, 1.8);
+    })();
+
+    // Drive: the car rolls into turns, dips its nose under braking, and bumps a little.
+    const total = curve.getLength();
+    let lastYaw = car.root.rotation.y, steer = 0, lastU = 0, v = 0, acc = 0, roll = 0, pitch = 0;
+    const drive = tw.during(17, (k, dt) => {
+      const u = Math.min(0.9999, 1 - Math.pow(1 - k, 2.2));
+      placeCar(u);
+      const h = Math.max(dt, 1e-3);
       const y = car.root.rotation.y;
       let yr = y - lastYaw;
       if (yr > Math.PI) yr -= Math.PI * 2;
       if (yr < -Math.PI) yr += Math.PI * 2;
       lastYaw = y;
-      steer += ((yr / Math.max(dt, 1e-3)) * 2.4 - steer) * Math.min(1, dt * 5);
+      const nv = ((u - lastU) * total) / h;
+      lastU = u;
+      acc += ((nv - v) / h - acc) * Math.min(1, dt * 4);
+      v = nv;
+      steer += ((yr / h) * 2.4 - steer) * Math.min(1, dt * 5);
       car.wheel.rotation.z = clamp(steer, -2.4, 2.4);
-      if (engine) engine.src.playbackRate.value = 0.82 + (1 - k) * 0.45;
+      roll += (clamp(-(yr / h) * v * 0.01, -0.035, 0.035) - roll) * Math.min(1, dt * 3);
+      pitch += (clamp(acc * 0.008, -0.025, 0.02) - pitch) * Math.min(1, dt * 4);
+      const t = g.time;
+      car.root.rotation.x = pitch + (Math.sin(t * 11.3) * Math.sin(t * 3.1)) * 0.0025 * Math.min(1, v / 6);
+      car.root.rotation.z = roll + Math.sin(t * 7.7) * 0.0015 * Math.min(1, v / 6);
+      car.root.position.y = Math.abs(Math.sin(t * 9.1) * Math.sin(t * 2.3)) * 0.006 * Math.min(1, v / 6);
+      // eyes lead into the turn
+      P.extraYaw = clamp((yr / h) * 0.35, -0.35, 0.35);
+      if (engine) engine.src.playbackRate.value = 0.8 + Math.min(1, v / 12) * 0.5;
     });
-    const dj = (async () => {
-      await tw.wait(2.5);
-      for (const line of djLines) await g.voice.speak('dj', line);
+    // Richie isn't a statue: he checks the houses, the radio, Moose.
+    const glances = (async () => {
+      await tw.wait(3.4);
+      await P.turnTo(0.6, -0.02, 1.2);
+      await tw.wait(1.3);
+      await P.turnTo(0.04, -0.08, 1.0);
+      await tw.wait(1.9);
+      await P.turnTo(-0.42, -0.45, 0.8);
+      await tw.wait(1.1);
+      await P.turnTo(0, -0.08, 0.9);
+      await tw.wait(2.2);
+      D.lookAt = P.camera;
+      D.wagAmt = 0.8;
+      await P.turnTo(-0.9, -0.36, 0.9);
+      await tw.wait(1.2);
+      D.lookAt = null;
+      await P.turnTo(0, -0.1, 0.9);
     })();
     await drive;
-    await dj;
+    await glances;
+    P.extraYaw = 0;
     car.wheel.rotation.z = 0;
+    // settle on the springs
+    await tw.to(car.root.rotation, { x: -0.022 }, 0.25, 'outQuad');
+    await tw.to(car.root.rotation, { x: 0.008 }, 0.35, 'inOutSine');
+    await tw.to(car.root.rotation, { x: 0, z: 0 }, 0.4, 'inOutSine');
+    car.root.position.y = 0;
+    await show;
+    await tw.wait(1.4);
 
     await this.richie('Okay. Okay, Moose. Th-this is it.');
     D.wagAmt = 1;
@@ -216,7 +265,7 @@ export class Seq {
     this.sfx('key', { follow: car.key, vol: 0.6 });
     await Promise.all([tw.to(H.R.group.rotation, { z: -2.25 }, 0.35), tw.to(car.key.rotation, { x: -1.0 }, 0.35)]);
     A.stop(engine, 0.2);
-    A.stop(radio, 0.05);
+    A.stop(song, 0.03);
     car.radio.visible = false;
     this.sfx('engine_off', { follow: car.root, vol: 0.55 });
     g.ui.vhs('JUN 17 1995<br>8:07 AM');
@@ -270,7 +319,7 @@ export class Seq {
     const car = this.g.car, p = car.root.position, y = car.root.rotation.y;
     const c = Math.abs(Math.cos(y)), s = Math.abs(Math.sin(y));
     const hx = c * car.W / 2 + s * car.L / 2, hz = s * car.W / 2 + c * car.L / 2;
-    return { minX: p.x - hx, maxX: p.x + hx, minZ: p.z - hz, maxZ: p.z + hz };
+    return { minX: p.x - hx, maxX: p.x + hx, minZ: p.z - hz, maxZ: p.z + hz, vehicle: true };
   }
 
   async closeCarDoor(door, lookYaw = null) {
@@ -350,7 +399,7 @@ export class Seq {
     const lean = W(car.W / 2 + 0.12, 0, 0.18);
     await Promise.all([P.moveTo(lean.x, lean.z, 0.8), tw.to(P, { eye: 1.2 }, 0.8), P.lookAt(D.collarWorld(V()).add(V(0, 0.12, 0)), 0.8)]);
     await this.clipLeash();
-    await this.richie('Haâ€” okay, okay. Good boy.');
+    await this.richie('Ha— okay, okay. Good boy.');
     await Promise.all([P.moveTo(stand.x, stand.z, 0.7), tw.to(P, { eye: 1.62 }, 0.7)]);
     await P.lookAt(D.collarWorld(V()).add(V(0, 0.12, 0)), 0.4);
     await this.richie('Okay. Out you come.');

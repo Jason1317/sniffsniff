@@ -114,7 +114,7 @@ export const LEVELS = {
   heart: -27, breath_in: -33, breath_out: -33, cloth: -36, whistle: -26,
   lighter: -29, lighter_fail: -30, inhale: -34, exhale: -34, crinkle: -36, clip: -32, squeak: -38, bulb_on: -31, knock: -19,
   door_open: -26, door_close: -21, deadbolt: -26, chain: -30, car_door_open: -25, car_door_close: -19,
-  engine: -27, engine_off: -25, key: -31, static: -38, car_pass: -27,
+  engine: -27, engine_off: -25, key: -31, static: -38, car_pass: -27, radio: -25,
   clang: -23, thud: -27, zap: -33, tick: -30, pop: -16, snap: -20, run_steps: -22, bell: -25, freewheel: -34, alarm: -23, train: -24,
   wind: -34, sprinkler: -36, mower: -31, cricket_a: -36, cricket_b: -36, cricket_c: -36, cricket_bed: -35,
   robin: -29, cardinal: -29, chickadee: -29, sparrow: -30, dove: -30,

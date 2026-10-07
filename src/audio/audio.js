@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { SOUNDS, SR, LEVELS, loudness, brightness } from './synth.js';
+import { SONGS, renderSong } from './radio.js';
 import { pick } from '../core/util.js';
 
 // Web Audio engine: buses, HRTF positional sound, a fog/mist muffle that dulls distant
@@ -22,6 +23,24 @@ export class AudioEngine {
     this.timers = { bird: 2, dog: 20, car: 30, breath: 0, heart: 0, zap: 3 };
     this.breathIn = true;
     this.listenerPos = new THREE.Vector3();
+    // Radio songs take a moment to render: start right away, in a worker, so they're
+    // done long before anyone clicks Play. (Falls back to rendering in init.)
+    this.songs = {};
+    this.songsReady = new Promise((resolve) => {
+      const left = new Set(Object.keys(SONGS));
+      const fallback = () => { for (const k of left) this.songs[k] = renderSong(SONGS[k]); left.clear(); resolve(); };
+      try {
+        const w = new Worker(new URL('./radioWorker.js', import.meta.url), { type: 'module' });
+        w.onmessage = (e) => {
+          this.songs[e.data.name] = e.data.data;
+          left.delete(e.data.name);
+          if (!left.size) { w.terminate(); resolve(); }
+        };
+        w.onerror = () => { w.terminate(); fallback(); };
+      } catch (e) {
+        fallback();
+      }
+    });
   }
 
   async init() {
@@ -60,7 +79,21 @@ export class AudioEngine {
       this.buffers[names[i]] = this._make(names[i], SOUNDS[names[i]]);
       if (i % 8 === 7) await new Promise((r) => setTimeout(r, 0));
     }
+    // the songs on the car radio
+    await this.songsReady;
+    for (const k of Object.keys(SONGS)) this.buffers['radio_' + k] = [this._fromData(this.songs[k], LEVELS.radio)];
     this.ready = true;
+  }
+
+  // A rendered mono track as a buffer, set to a target loudness (dB).
+  _fromData(d, dB) {
+    const b = this.ctx.createBuffer(1, d.length, SR);
+    const out = b.getChannelData(0);
+    let peak = 0;
+    for (let i = 0; i < d.length; i++) peak = Math.max(peak, Math.abs(d[i]));
+    const g = Math.min(Math.pow(10, dB / 20) / (loudness(d) || 1), 0.95 / (peak || 1));
+    for (let i = 0; i < d.length; i++) out[i] = d[i] * g;
+    return b;
   }
 
   // Build every variant, then set it to its target loudness from LEVELS so the mix is
@@ -145,7 +178,7 @@ export class AudioEngine {
     const h = { src, gain, filter, panner, vol, pos: o.pos ? o.pos.clone() : null, follow: o.follow || null, ended: false, offset: o.offset || null };
     src.onended = () => { h.ended = true; this.tracked.delete(h); };
     if (panner) { this._place(h); this.tracked.add(h); }
-    src.start(ctx.currentTime + (o.delay || 0));
+    src.start(ctx.currentTime + (o.delay || 0), o.at || 0);
     return h;
   }
 

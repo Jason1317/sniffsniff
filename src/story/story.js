@@ -8,9 +8,8 @@ const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
 const DJ = [
-  "Good mornin', Willet! Eight-oh-five on a Saturday. This is W-L-K-R, ninety-eight point one.",
-  "Gonna be a hot one, folks. High of eighty-eight.",
-  'And a reminder from the Willet P.D. — keep your pets inside after dark.',
+  "Ninety-eight one, W-L-K-R. Eight-oh-five on a Saturday, Willet. Gonna be a hot one, high of eighty-eight.",
+  "And the Willet P.D. asks: keep your pets inside after dark, folks. Here's a nice one for your morning.",
 ];
 
 const LINES = {
@@ -168,6 +167,13 @@ export class Story {
       enabled: () => day() && !this.flags.metLindqvist,
       action: () => this.lindqvistTalk(),
     });
+    // Dorothy, before the introduction
+    I.add({
+      label: 'Say hello', radius: 4.0, aim: 0.5,
+      pos: () => g.npcs.dorothy.headWorld(),
+      enabled: () => day() && g.dog.leashed && !this.flags.metDorothy,
+      action: () => this.dorothyIntro(),
+    });
     // Dorothy small talk after the intro
     I.add({
       label: 'Talk', radius: 3.0, aim: 0.5,
@@ -272,6 +278,7 @@ export class Story {
       } else {
         const p = this.walk.progress, walkDone = p >= 0.9;
         t.push({ id: 'walk', text: 'Walk Moose around the block', done: walkDone, progress: Math.min(1, p / 0.9), progressLabel: `${Math.min(100, Math.round((p / 0.9) * 100))}% of the way around`, target: walkDone ? null : this.walkTarget(), label: 'keep walking' });
+        if (f.dorothyCalled && !f.metDorothy) t.push({ id: 'hello', text: 'Say hello to the neighbor', target: g.npcs.dorothy.headWorld(), label: 'the neighbor' });
         if (f.bulbTask) t.push({ id: 'bulb', text: "Change Mrs. Kessler's porch light", done: f.bulbFixed, target: H.dorothy.porchLight.pos, label: "Mrs. Kessler's porch" });
         if (f.letter) t.push({ id: 'letter', text: "Deliver Walt Brenner's letter (418 Oak St)", done: f.letterDelivered, target: door(H.walt), label: '418 Oak St' });
         if (this.poop && !this.poop.picked && !f.poopLeft) t.push({ id: 'poop', text: 'Pick up after Moose', optional: true, target: this.poop.obj.position, label: "Moose's mess" });
@@ -294,7 +301,7 @@ export class Story {
     const g = this.g, P = g.player;
     const { list, hint } = this.computeTasks();
     g.ui.tasks(list, hint);
-    const order = ['car', 'bulb', 'letter', 'home', 'bag', 'poop', 'walk', 'follow'];
+    const order = ['car', 'hello', 'bulb', 'letter', 'home', 'bag', 'poop', 'walk', 'follow'];
     let tgt = null;
     for (const id of order) {
       const t = list.find((x) => x.id === id && !x.done && x.target);
@@ -359,7 +366,7 @@ export class Story {
     this.carYipT = 3;
   }
 
-  wateringCan(on) {
+  wateringCan(on, setDown = false) {
     const g = this.g, d = g.npcs.dorothy;
     if (on) {
       if (!this.can) {
@@ -385,8 +392,33 @@ export class Story {
     } else {
       d.watering = false;
       if (this.can && this.can.parent) this.can.parent.remove(this.can);
+      if (setDown && this.can) {
+        // leave it on the lawn by her feet
+        const side = V(Math.cos(d.yaw), 0, -Math.sin(d.yaw));
+        this.can.position.copy(d.pos).addScaledVector(side, 0.45).setY(0.22);
+        this.can.rotation.set(0, d.yaw + 0.6, 0);
+        g.scene.add(this.can);
+      }
       d.manual = false;
     }
+  }
+
+  // She spots Richie from her flower bed and calls him over (no cutscene: he walks over).
+  async dorothyCallout() {
+    const g = this.g, d = g.npcs.dorothy, P = g.player;
+    this.flags.dorothyCalled = true;
+    this.calledT = this.t;
+    d.watering = false;
+    d.lookTarget = P.camera;
+    await g.tw.wait(0.35);
+    d.faceToward(P.pos);
+    d.wave(3);
+    await d.say('Yoo-hoo! Hello there!');
+    await g.tw.wait(0.4);
+    if (this.flags.metDorothy) return;
+    await this.say('Oh. Uh... hi.');
+    await g.tw.wait(0.3);
+    if (!this.flags.metDorothy) d.say('Come say hello, dear! I don\'t bite.');
   }
 
   async lindqvistLoop() {
@@ -424,7 +456,7 @@ export class Story {
     const loop = [[-66.5, 2.4], [-67.5, -61], [67.5, -61], [67.5, 2.4]];
     let i = 0;
     while (this.mode === 'day') {
-      await J.walkPath([loop[i]], 2.9);
+      await J.walkPath([loop[i]], 2.9, { arrive: false });
       i = (i + 1) % loop.length;
     }
     J.stop();
@@ -434,26 +466,36 @@ export class Story {
   // ---------------------------------------------------------------- Dorothy
   async dorothyIntro() {
     const g = this.g, d = g.npcs.dorothy, P = g.player, D = g.dog, tw = g.tw;
+    if (this.flags.metDorothy) return;
     this.flags.metDorothy = true;
     this.dorothyBusy = true;
     await g.cut(async () => {
-      this.wateringCan(false);
+      g.voice.cancel();
+      d.stop();
       d.lookTarget = P.camera;
-      d.wave(3);
-      const hi = d.say('Yoo-hoo! Hello there!');
-      await P.lookAt(d.headWorld(), 0.8);
-      await hi;
-      const dir = V(d.pos.x - P.pos.x, 0, d.pos.z - P.pos.z);
-      const dist = dir.length();
-      dir.normalize();
-      const meet = P.pos.clone().addScaledVector(dir, Math.min(dist, 1.35));
-      if (dist > 1.6) {
-        const walk = d.walkPath([meet], 0.95);
-        await g.tw.during(Math.max(0.5, (dist - 1.35) / 0.95), () => P.lookAt(d.headWorld(), 0.05));
-        await walk;
+      d.faceToward(P.pos);
+      const eyes = P.gaze(() => d.headWorld(), 3.5);
+      // she sets the watering can down and the two of them close the last few steps
+      this.wateringCan(false, true);
+      if (!this.flags.dorothyCalled) {
+        d.wave(2);
+        await d.say('Oh! Hello there!');
+      }
+      const dist = flat(d.pos, P.pos);
+      if (dist > 1.7) {
+        const dir = V(P.pos.x - d.pos.x, 0, P.pos.z - d.pos.z).normalize();
+        const hers = d.pos.clone().addScaledVector(dir, (dist - 1.4) * 0.4);
+        const mine = hers.clone().addScaledVector(dir, 1.4);
+        const mineD = flat(mine, P.pos);
+        await Promise.all([
+          d.walkPath([hers], 1.05),
+          mineD > 0.2 ? tw.wait(0.25).then(() => P.moveTo(mine.x, mine.z, mineD / 1.1 + 0.3)) : null,
+        ]);
       }
       d.faceToward(P.pos);
-      await P.lookAt(d.headWorld(), 0.4);
+      await tw.wait(0.35);
+      eyes.stop();
+      await P.lookAt(d.headWorld(), 0.35);
       await d.say('You must be the young man who moved into the old Gunderson place!');
       await this.say("I— yeah. Renting. I'm, uh, renting it. I'm Richie.");
       await d.say('Dorothy Kessler. Forty-one years on Birch Lane.');
@@ -550,10 +592,23 @@ export class Story {
     this.dorothyBusy = false;
     const h = g.world.houses.dorothy;
     const back = h.toWorld(-2.6, 0, -h.def.d / 2 - 1.6);
-    d.walkPath([back], 0.9).then(() => {
+    (async () => {
+      // pick the watering can back up on the way
+      const can = this.can;
+      if (can && can.parent === g.scene) {
+        const toC = V(can.position.x - d.pos.x, 0, can.position.z - d.pos.z), l = toC.length();
+        if (l > 0.55) await d.walkPath([d.pos.clone().addScaledVector(toC.normalize(), l - 0.4)], 0.9);
+        d.faceToward(can.position);
+        await g.tw.wait(0.3);
+        await g.tw.to(d.pose, { crouch: 0.45 }, 0.45);
+        d.holdItem(can);
+        can.rotation.set(0, 0, 0);
+        await g.tw.to(d.pose, { crouch: 0 }, 0.5);
+      }
+      await d.walkPath([back], 0.9);
       d.face(h.facing + Math.PI);
       if (this.mode === 'day') this.wateringCan(true);
-    });
+    })();
   }
 
   // ---------------------------------------------------------------- Lindqvist
@@ -1007,8 +1062,18 @@ export class Story {
     }
 
     const free = P.control && !g.busy;
-    // Dorothy notices you
-    if (free && !this.flags.metDorothy && D.leashed && flat(P.pos, d.pos) < 14) this.dorothyIntro();
+    // Dorothy: once Richie is out of the car with Moose she calls him over from her
+    // flower bed, then waits. The introduction starts when he walks up to her.
+    if (D.leashed && !this.flags.metDorothy) {
+      const dd = flat(P.pos, d.pos);
+      if (this.leashedT === undefined) this.leashedT = this.t;
+      if (free && !this.flags.dorothyCalled && this.t - this.leashedT > 2.0 && dd < 24 && flat(P.pos, g.car.root.position) > 2.6) this.dorothyCallout();
+      if (free && dd < 3.0) this.dorothyIntro();
+      else if (this.flags.dorothyCalled) {
+        if (!d.walking) d.faceToward(P.pos);
+        if (free && this.t - this.calledT > 26 && dd < 30 && this.first('dorothyAgain')) { d.wave(2); d.say('Over here, hon!'); }
+      }
+    }
     if (free) this.updateWalk();
 
     // Lindqvist stops and stares, holding up one hand, far too long
